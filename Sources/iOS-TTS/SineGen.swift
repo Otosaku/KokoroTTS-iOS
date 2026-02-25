@@ -13,9 +13,9 @@ class SineGen {
     private let upsampleScale: Float = 300.0
     
     /// Enable or disable phase randomization for debugging purposes
-    /// Set to false to disable randomization
-    private let useRandomPhase: Bool = true
-    
+    /// Set to false to disable randomization (for deterministic testing)
+    private let useRandomPhase: Bool
+
     // Precomputed constants
     private let twoPi: Float = 2.0 * Float.pi
     private let sineAmpDiv3: Float
@@ -23,8 +23,11 @@ class SineGen {
     private var invSamplingRate: Float
     private var invUpsampleScale: Float
     private let halfUpsampleScale: Float = 0.5
-    
-    init() {
+
+    /// Initialize with optional deterministic mode for testing
+    /// - Parameter deterministic: If true, disables random phase for reproducible results (default: false)
+    init(deterministic: Bool = false) {
+        self.useRandomPhase = !deterministic
         // Precompute constants
         self.sineAmpDiv3 = sineAmp / 3.0
         self.harmonicMultipliers = (1...dim).map { Float($0) }
