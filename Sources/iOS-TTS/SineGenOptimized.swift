@@ -76,17 +76,45 @@ class SineGenOptimized {
         let shape = f0.shape
         let uv = try MLMultiArray(shape: shape, dataType: .float32)
 
-        // Use pointer-based access for better performance
         let f0Pointer = f0.dataPointer.bindMemory(to: Float32.self, capacity: f0.count)
         let uvPointer = uv.dataPointer.bindMemory(to: Float32.self, capacity: uv.count)
 
-        // Vectorized threshold comparison
-        var threshold = voicedThreshold
-        var one: Float = 1.0
-        var zero: Float = 0.0
+        let count = f0.count
+        let thresholdVec = SIMD8<Float>(repeating: voicedThreshold)
+        let oneVec = SIMD8<Float>(repeating: 1.0)
+        let zeroVec = SIMD8<Float>(repeating: 0.0)
 
-        for i in 0..<f0.count {
-            uvPointer[i] = f0Pointer[i] > threshold ? one : zero
+        // Process 8 elements at a time with SIMD
+        let simdCount = count / 8
+        let remainder = count % 8
+
+        for i in 0..<simdCount {
+            let base = i * 8
+            let f0Vec = SIMD8<Float>(
+                f0Pointer[base], f0Pointer[base + 1],
+                f0Pointer[base + 2], f0Pointer[base + 3],
+                f0Pointer[base + 4], f0Pointer[base + 5],
+                f0Pointer[base + 6], f0Pointer[base + 7]
+            )
+
+            // Compare: result is 1 where f0 > threshold, else 0
+            let mask = f0Vec .> thresholdVec
+            let result = zeroVec.replacing(with: oneVec, where: mask)
+
+            uvPointer[base] = result[0]
+            uvPointer[base + 1] = result[1]
+            uvPointer[base + 2] = result[2]
+            uvPointer[base + 3] = result[3]
+            uvPointer[base + 4] = result[4]
+            uvPointer[base + 5] = result[5]
+            uvPointer[base + 6] = result[6]
+            uvPointer[base + 7] = result[7]
+        }
+
+        // Handle remainder
+        let baseRemainder = simdCount * 8
+        for i in 0..<remainder {
+            uvPointer[baseRemainder + i] = f0Pointer[baseRemainder + i] > voicedThreshold ? 1.0 : 0.0
         }
 
         return uv
