@@ -372,39 +372,23 @@ class SineGenOptimized {
         let batchSize = f0.shape[0].intValue
         let length = f0.shape[1].intValue
 
-        // Step 1: Generate harmonics using SIMD
+        // Step 1: Generate harmonics using vDSP with stride
         var t = profileStart()
         let fn = try MLMultiArray(shape: [NSNumber(value: batchSize), NSNumber(value: length), NSNumber(value: dim)], dataType: .float32)
         let f0Pointer = f0.dataPointer.bindMemory(to: Float32.self, capacity: f0.count)
         let fnPointer = fn.dataPointer.bindMemory(to: Float32.self, capacity: fn.count)
 
-        // Preload harmonic multipliers as SIMD8 + scalar
-        let harmonicVec = SIMD8<Float>(
-            harmonicMultipliers[0], harmonicMultipliers[1],
-            harmonicMultipliers[2], harmonicMultipliers[3],
-            harmonicMultipliers[4], harmonicMultipliers[5],
-            harmonicMultipliers[6], harmonicMultipliers[7]
-        )
-        let harmonic9 = harmonicMultipliers[8]
-
+        // Process each harmonic using vectorized multiply over all time steps
+        // fn[b, t, h] = f0[b, t] * harmonicMultipliers[h]
         for b in 0..<batchSize {
-            for ti in 0..<length {
-                let f0Value = f0Pointer[b * length + ti]
-                let baseIdx = b * length * dim + ti * dim
+            let f0Base = f0Pointer + b * length
+            let fnBase = fnPointer + b * length * dim
 
-                // Compute 8 harmonics at once
-                let resultVec = harmonicVec * f0Value
-
-                // Store results
-                fnPointer[baseIdx] = resultVec[0]
-                fnPointer[baseIdx + 1] = resultVec[1]
-                fnPointer[baseIdx + 2] = resultVec[2]
-                fnPointer[baseIdx + 3] = resultVec[3]
-                fnPointer[baseIdx + 4] = resultVec[4]
-                fnPointer[baseIdx + 5] = resultVec[5]
-                fnPointer[baseIdx + 6] = resultVec[6]
-                fnPointer[baseIdx + 7] = resultVec[7]
-                fnPointer[baseIdx + 8] = f0Value * harmonic9
+            for h in 0..<dim {
+                var multiplier = harmonicMultipliers[h]
+                // Source: f0 with stride 1 (contiguous)
+                // Dest: fn[:, h] with stride dim (every 9th element)
+                vDSP_vsmul(f0Base, 1, &multiplier, fnBase + h, vDSP_Stride(dim), vDSP_Length(length))
             }
         }
         profileEnd(t, name: "fwd_1_harmonics")
