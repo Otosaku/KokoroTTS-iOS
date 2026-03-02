@@ -54,7 +54,6 @@ public class EspeakBackend {
         }
         
         if !initialized {
-            print("Warning: Failed to initialize EspeakBackend for language: \(language)")
         }
     }
     
@@ -73,7 +72,6 @@ public class EspeakBackend {
             return "͡" // U+361 tie character
         case .custom(let char):
             if char.count != 1 {
-                print("Warning: explicit tie must be a single character but is \(char)")
                 return "͡"
             }
             return char
@@ -134,10 +132,8 @@ public class EspeakBackend {
                 let (chunks, marks) = preserveLine(line, lineNum: lineNum)
                 
                 // Фонемизируем каждый chunk отдельно (как Python!)
-                print("📋 Chunks to phonemize: \(chunks)")
                 for chunk in chunks {
                     let phonemized = _phonemize_aux([chunk], offset: 0, separator: separator, strip: strip)
-                    print("  Chunk '\(chunk)' -> '\(phonemized.first ?? "")'")
                     allPhonemes.append(contentsOf: phonemized)
                 }
                 
@@ -145,12 +141,9 @@ public class EspeakBackend {
             }
             
             // НЕ объединяем! Передаём фонемы как отдельные chunks в алгоритм восстановления
-            print("🔧 Individual phonemes: \(allPhonemes)")
-            print("📌 Marks to restore: \(allMarks.flatMap { $0 }.map { "index=\($0.index), mark=\($0.mark), pos=\($0.position)" })")
             
             // Восстанавливаем пунктуацию - передаём каждый chunk отдельно
             let result = restorePunctuationSimple(allPhonemes, marks: allMarks.flatMap { $0 })
-            print("🎯 After punctuation restoration: \(result)")
             
             // Объединяем результат в одну строку для финального вывода
             let finalResult = result.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -415,7 +408,6 @@ public class EspeakBackend {
         let strip = false
         
         while !text.isEmpty || !marks.isEmpty {
-            print("  🔄 Loop: text=\(text), marks=\(marks.map { "(\($0.index),\($0.mark),\($0.position))" }), pos=\(pos)")
             
             if marks.isEmpty {
                 // Нет больше пунктуации - добавляем оставшийся текст

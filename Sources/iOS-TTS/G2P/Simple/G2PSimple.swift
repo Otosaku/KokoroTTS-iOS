@@ -74,12 +74,10 @@ public class G2PSimple: G2P {
         }
         
         // DEBUG: Включаем для проверки финального результата
-        print("📝 Raw phonemes from espeak: '\(phonemeString)'")
         
         // Применяем пост-обработку как в Python EspeakG2P
         let finalPhonemes = postprocessPhonemes(phonemeString)
         
-        print("✨ Final phonemes after E2M: '\(finalPhonemes)'")
         
         return G2PResult(
             phonemeString: finalPhonemes,

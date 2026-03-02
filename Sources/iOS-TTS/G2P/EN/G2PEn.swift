@@ -30,14 +30,10 @@ public class G2PEn: G2P {
     public func convert(_ text: String) throws -> G2PResult {
         
         let preprocessResult = G2PEn.preprocess(text)
-        print("🔍 G2P.preprocess result: \"\(preprocessResult.result)\"")
-        print("🔍 G2P.preprocess tokens: \(preprocessResult.tokens)")
-        print("🔍 G2P.preprocess features: \(preprocessResult.features)")
         
         // Токенизация и POS-теггинг
         var tokens = try tokenize(text: preprocessResult.result, tokens: preprocessResult.tokens, features: preprocessResult.features)
         for (i, token) in tokens.enumerated() {
-            print("🔍 Token[\(i)]: text='\(token.text)', tag='\(token.tag)', whitespace='\(token.whitespace)', phonemes='\(token.phonemes ?? "nil")', stress=\(token.underscore.stress?.description ?? "nil"), numFlags='\(token.underscore.numFlags)', rating=\(token.underscore.rating?.description ?? "nil"), isHead=\(token.underscore.isHead)")
         }
         // fold_left - объединение токенов
         tokens = foldLeft(tokens: tokens)
@@ -83,7 +79,6 @@ public class G2PEn: G2P {
             return phonemes + token.whitespace
         }.joined()
         
-        print("🔍 Final phoneme string: \"\(phonemeString)\"")
         
         return G2PResult(phonemeString: phonemeString, tokens: finalTokens)
     }
@@ -164,7 +159,6 @@ public class G2PEn: G2P {
             // Проверяем что следующий токен - это апостроф (любой вид)
             if i + 1 < tokens.count {
                 let nextTokenText = tokens[i + 1].text
-                print("🔍 Checking token pair: '\(token.text)' + '\(nextTokenText)' (length: \(nextTokenText.count), unicode: \(nextTokenText.unicodeScalars.map { String($0.value, radix: 16) }.joined()))")
             }
             
             // Проверяем что следующий токен похож на апостроф
@@ -178,10 +172,8 @@ public class G2PEn: G2P {
                 }
             }
             
-            print("🔍 isApostrophe = \(isApostrophe) for token '\(i + 1 < tokens.count ? tokens[i + 1].text : "N/A")'")
             
             if i + 2 < tokens.count && isApostrophe {
-                print("🔍 Found apostrophe pattern: '\(token.text)' + '\(tokens[i + 1].text)' + '\(tokens[i + 2].text)'")
                 let nextToken = tokens[i + 2]
                 let combined = token.text + "'" + nextToken.text
                 
@@ -262,9 +254,7 @@ public class G2PEn: G2P {
     
     /// Логирование результата токенизации
     private func logTokenizeResult(_ tokens: [MToken]) {
-        print("🔍 Tokenize result (\(tokens.count) tokens):")
         for (i, token) in tokens.enumerated() {
-            print("  [\(i)]: '\(token.text)' (tag: \(token.tag))")
         }
     }
     
@@ -356,7 +346,6 @@ public class G2PEn: G2P {
     
     /// retokenize метод точно как в Python G2P.retokenize
     public static func retokenize(tokens: [MToken]) -> [Any] {
-        print("🔍 G2P.retokenize input: \(tokens.count) tokens")
         
         var words: [Any] = []
         var currency: String? = nil
@@ -382,14 +371,12 @@ public class G2PEn: G2P {
                     )
                     return newToken
                 }
-                print("🔍 G2P.retokenize subtokenized '\(token.text)' into: \(subtokens)")
             } else {
                 tks = [token]
             }
             
             // tks[-1].whitespace = token.whitespace
             tks.last?.whitespace = token.whitespace
-            print("🔍 G2P.retokenize processing subtokens: \(tks.map { "'\($0.text)'(ws:'\($0.whitespace)')" })")
             
             for (j, tk) in tks.enumerated() {
                 // if tk._.alias is not None or tk.phonemes is not None: pass
@@ -401,20 +388,17 @@ public class G2PEn: G2P {
                     currency = tk.text
                     tk.phonemes = ""
                     tk.underscore.rating = 4
-                    print("🔍 G2P.retokenize found currency: '\(tk.text)'")
                 }
                 // elif tk.tag == ':' and tk.text in ('-', '–'):
                 else if tk.tag == ":" && ["-", "–"].contains(tk.text) {
                     tk.phonemes = "—"
                     tk.underscore.rating = 3
-                    print("🔍 G2P.retokenize converted dash: '\(tk.text)' -> '—'")
                 }
                 // elif tk.tag in PUNCT_TAGS and not all(97 <= ord(c.lower()) <= 122 for c in tk.text):
                 else if isPunctTag(tk.tag) && !tk.text.allSatisfy({ c in c.isLetter }) {
                     let punctMap = ["-LRB-": "(", "-RRB-": ")", "``": "\u{201C}", "\"\"": "\u{201D}", "''": "\u{201D}"]
                     tk.phonemes = punctMap[tk.tag] ?? tk.text.filter { ";:,.!?—…\"".contains($0) }.map(String.init).joined()
                     tk.underscore.rating = 4
-                    print("🔍 G2P.retokenize handled punctuation: '\(tk.text)' -> '\(tk.phonemes ?? "")'")
                 }
                 // elif currency is not None:
                 else if currency != nil {
@@ -422,7 +406,6 @@ public class G2PEn: G2P {
                         currency = nil
                     } else if j + 1 == tks.count && (i + 1 == tokens.count || tokens[i + 1].tag != "CD") {
                         tk.underscore.currency = currency
-                        print("🔍 G2P.retokenize assigned currency '\(currency!)' to '\(tk.text)'")
                     }
                 }
                 // elif 0 < j < len(tks)-1 and tk.text == '2' and (tks[j-1].text[-1]+tks[j+1].text[0]).isalpha():
@@ -431,7 +414,6 @@ public class G2PEn: G2P {
                     let nextFirst = tks[j+1].text.first
                     if let prev = prevLast, let next = nextFirst, prev.isLetter && next.isLetter {
                         tk.underscore.alias = "to"
-                        print("🔍 G2P.retokenize converted '2' to 'to' between letters")
                     }
                 }
                 
@@ -439,7 +421,6 @@ public class G2PEn: G2P {
                 // if tk._.alias is not None or tk.phonemes is not None: words.append(tk)
                 if tk.underscore.alias != nil || tk.phonemes != nil {
                     words.append(tk)
-                    print("🔍 G2P.retokenize added token with alias/phonemes: '\(tk.text)'")
                 }
                 // elif words and isinstance(words[-1], list) and not words[-1][-1].whitespace:
                 else if !words.isEmpty,
@@ -450,29 +431,23 @@ public class G2PEn: G2P {
                     var updatedArray = lastWordArray
                     updatedArray.append(tk)
                     words[words.count - 1] = updatedArray
-                    print("🔍 G2P.retokenize added '\(tk.text)' to existing group (isHead=false)")
                 }
                 // else: words.append(tk if tk.whitespace else [tk])
                 else {
-                    print("🔍 G2P.retokenize token '\(tk.text)' has whitespace: '\(tk.whitespace)' (isEmpty: \(tk.whitespace.isEmpty))")
                     if !tk.whitespace.isEmpty {
                         // Токен с whitespace - добавляем как отдельный
                         words.append(tk)
-                        print("🔍 G2P.retokenize added single token '\(tk.text)' (has whitespace)")
                     } else {
                         // Токен без whitespace - создаем новую группу или добавляем к последней группе
-                        print("🔍 G2P.retokenize current words count: \(words.count), last is array: \(words.last is [MToken])")
                         if !words.isEmpty, let lastWordArray = words.last as? [MToken] {
                             // Последний элемент - группа, добавляем к ней
                             tk.underscore.isHead = false
                             var updatedArray = lastWordArray
                             updatedArray.append(tk)
                             words[words.count - 1] = updatedArray
-                            print("🔍 G2P.retokenize added '\(tk.text)' to existing group (isHead=false)")
                         } else {
                             // Создаем новую группу
                             words.append([tk])
-                            print("🔍 G2P.retokenize created new group with '\(tk.text)'")
                         }
                     }
                 }
@@ -487,7 +462,6 @@ public class G2PEn: G2P {
             return word
         }
         
-        print("🔍 G2P.retokenize output: \(result.count) words")
         
         return result
     }
@@ -723,7 +697,6 @@ public class G2PEn: G2P {
     
     /// Предобработка текста точно как в Python G2P.preprocess
     public static func preprocess(_ text: String) -> PreprocessResult {
-        print("🔍 G2P.preprocess input: \"\(text)\"")
         
         var result = ""
         var tokens: [String] = []

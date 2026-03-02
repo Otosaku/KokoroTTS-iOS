@@ -10,7 +10,7 @@ Add the package to your project via Swift Package Manager:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Otosaku/KokoroTTS-iOS", from: "1.0.0")
+    .package(url: "https://github.com/Otosaku/KokoroTTS-iOS", from: "1.1.0")
 ]
 ```
 

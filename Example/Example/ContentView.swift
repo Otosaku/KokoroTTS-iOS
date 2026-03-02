@@ -17,9 +17,6 @@ struct ContentView: View {
     @State private var performanceReport: String? = nil
     @State private var showPerformanceReport = false
     @State private var showVoiceSettings = false
-    @State private var showSineGenTest = false
-    @State private var sineGenTestReport: String? = nil
-    @State private var isSineGenTesting = false
 
     // Voice settings
     @State private var selectedLanguage: Language = .englishUS
@@ -249,20 +246,6 @@ struct ContentView: View {
             }
             .navigationTitle("iOS-TTS Example")
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        runSineGenTest()
-                    }) {
-                        if isSineGenTesting {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                        } else {
-                            Image(systemName: "waveform.circle")
-                                .font(.body)
-                        }
-                    }
-                    .disabled(isSineGenTesting)
-                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         showVoiceSettings = true
@@ -312,28 +295,8 @@ struct ContentView: View {
                 }
             }
         }
-        .sheet(isPresented: $showSineGenTest) {
-            NavigationView {
-                ScrollView {
-                    if let report = sineGenTestReport {
-                        Text(report)
-                            .font(.system(.caption, design: .monospaced))
-                            .padding()
-                    }
-                }
-                .navigationTitle("SineGen Test")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") {
-                            showSineGenTest = false
-                        }
-                    }
-                }
-            }
-        }
     }
-    
+
     private func generateSpeech() async {
         isGenerating = true
         modelManager.errorMessage = nil
@@ -368,31 +331,6 @@ struct ContentView: View {
         let minutes = Int(time) / 60
         let seconds = Int(time) % 60
         return String(format: "%d:%02d", minutes, seconds)
-    }
-
-    private func runSineGenTest() {
-        isSineGenTesting = true
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                let tester = SineGenTester()
-                let result = try tester.runTest(length: 48000)
-                let report = tester.generateReport(result)
-
-                DispatchQueue.main.async {
-                    sineGenTestReport = report
-                    showSineGenTest = true
-                    isSineGenTesting = false
-                    print("\n\(report)")
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    sineGenTestReport = "Error: \(error.localizedDescription)"
-                    showSineGenTest = true
-                    isSineGenTesting = false
-                }
-            }
-        }
     }
 }
 

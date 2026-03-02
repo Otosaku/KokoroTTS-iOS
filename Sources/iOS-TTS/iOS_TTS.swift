@@ -298,9 +298,7 @@ public class TTSPipeline {
         // Добавляем BOS/EOS токены как указано в CLAUDE.md: [0] + ids + [0]
         let bosEosId = vocab["<pad>"] ?? vocab["[PAD]"] ?? 0  // BOS/EOS обычно 0
         let finalIds = [bosEosId] + inputIds + [bosEosId]
-        
-        print("🔍 Final input IDs (\(finalIds.count) tokens): \(finalIds)")
-        
+
         return finalIds
     }
     
@@ -334,8 +332,7 @@ public class TTSPipeline {
         let styleEndIndex = styleStartIndex + 256
         
         let styleVector = Array(rawStyleVector[styleStartIndex..<styleEndIndex])
-        print("Selected style vector \(styleIndex) for sequence length \(sequenceLength)")
-        
+
         // Call model inference
         return try model.infer(inputIds: inputIds, refS: styleVector, speed: options.speed)
     }
@@ -385,7 +382,6 @@ public class TTSPipeline {
         
         // Загружаем vocab файл
         guard FileManager.default.fileExists(atPath: vocabFileURL.path) else {
-            print("⚠️ Vocabulary file not found: \(vocabFileName). G2P may not work correctly.")
             return
         }
         
@@ -395,14 +391,6 @@ public class TTSPipeline {
         }
         
         self.vocab = vocabDict
-        
-        print("🔍 Loaded vocabulary with \(vocab.count) tokens")
-        
-        // Выводим несколько примеров для отладки
-        let sampleTokens = Array(vocab.keys.prefix(5))
-        for token in sampleTokens {
-            print("🔍 Vocab example: '\(token)' -> \(vocab[token] ?? -1)")
-        }
     }
     
 }

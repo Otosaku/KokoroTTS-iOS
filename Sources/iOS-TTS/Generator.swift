@@ -6,9 +6,9 @@ public class Generator {
     private let generator: MLModel
     private let f0Upsample: MLModel
     private let sourceModule: MLModel
-    private let sineGen: SineGen
+    private let sineGen: SineGenOptimized
     private let rosaStft: RosaKitSTFT
-    
+
     /// Initialize generator with Core ML models
     /// - Parameters:
     ///   - generatorModel: The main generator model
@@ -18,10 +18,10 @@ public class Generator {
         self.generator = generatorModel
         self.f0Upsample = f0UpsampleModel
         self.sourceModule = sourceModuleModel
-        self.sineGen = SineGen()
+        self.sineGen = SineGenOptimized()
         self.rosaStft = RosaKitSTFT(filterLength: 20, hopLength: 5, winLength: 20)
     }
-    
+
     /// Initialize generator by loading models from path
     /// - Parameters:
     ///   - modelPath: Path to the directory containing model files
@@ -31,15 +31,17 @@ public class Generator {
         let generatorURL = modelPath.appendingPathComponent("Generator.mlmodelc")
         let f0UpsampleURL = modelPath.appendingPathComponent("F0Upsample.mlmodelc")
         let sourceModuleURL = modelPath.appendingPathComponent("SourceModuleHnNSF.mlmodelc")
+        // Generator Core: CPU-only is fastest
+        // ANE/GPU cause slowdown due to dilated convolutions and Snake activation
         let genConf = MLModelConfiguration()
         genConf.computeUnits = .cpuOnly
         let generatorModel = try MLModel(contentsOf: generatorURL, configuration: genConf)
         let f0UpsampleModel = try MLModel(contentsOf: f0UpsampleURL, configuration: configuration)
         let sourceModuleModel = try MLModel(contentsOf: sourceModuleURL, configuration: configuration)
-        
+
         self.init(generatorModel: generatorModel, f0UpsampleModel: f0UpsampleModel, sourceModuleModel: sourceModuleModel)
     }
-    
+
     /// Generate audio from decoder output
     /// - Parameters:
     ///   - x: Decoder output tensor
@@ -49,144 +51,103 @@ public class Generator {
     /// - Throws: Error if generation fails
     public func generate(x: MLMultiArray, s: MLMultiArray, f0Curve: MLMultiArray) throws -> [Float] {
         let monitor = PerformanceMonitor.shared
-        
-        print("🎵 Generator starting with inputs:")
-        print("   x shape: \(x.shape), elements: \(x.count)")
-        print("   s shape: \(s.shape), elements: \(s.count)")
-        print("   f0Curve shape: \(f0Curve.shape), elements: \(f0Curve.count)")
-        
+
         // Step 1: Upsample F0
         let f0UpsampleOutput = try monitor.measure(PerformanceMonitor.Module.f0Upsample) {
             let f0Input = try reshapeF0ForUpsample(f0Curve)
-            print("🔄 F0 reshaped for upsample: \(f0Input.shape), elements: \(f0Input.count)")
-            
             let f0UpsampleInput = try MLDictionaryFeatureProvider(dictionary: [
                 "f0": MLFeatureValue(multiArray: f0Input)
             ])
-            
-            print("▶️ Calling F0 Upsample model...")
-            let output = try f0Upsample.prediction(from: f0UpsampleInput)
-            print("✅ F0 Upsample completed successfully")
-            return output
+            return try f0Upsample.prediction(from: f0UpsampleInput)
         }
         guard let f0Upsampled = f0UpsampleOutput.featureValue(for: "f0_out")?.multiArrayValue else {
             throw TTSError.predictionFailed("Failed to get F0 upsample output")
         }
-        print("📈 F0 upsampled result: \(f0Upsampled.shape), elements: \(f0Upsampled.count)")
-        
+
         // Transpose f0 from [batch, 1, time] to [batch, time, 1]
         let f0Transposed = try transposeF0(f0Upsampled)
-        print("🔄 F0 transposed: \(f0Transposed.shape), elements: \(f0Transposed.count)")
-        
-        // Step 2: Generate sine waves using SineGen
+
+        // Step 2: Generate sine waves using SineGenOptimized
         let sineWaves = try monitor.measure(PerformanceMonitor.Module.sineGen) {
-            print("▶️ Calling SineGen...")
-            let output = try sineGen.forward(f0Transposed)
-            print("✅ SineGen completed, output shape: \(output.shape), elements: \(output.count)")
-            return output
+            return try sineGen.forward(f0Transposed)
         }
-        
+
         // Step 3: Process through source module
         let sourceOutput = try monitor.measure(PerformanceMonitor.Module.sourceModule) {
             let sourceInput = try MLDictionaryFeatureProvider(dictionary: [
                 "sine_wavs": MLFeatureValue(multiArray: sineWaves)
             ])
-            
-            print("▶️ Calling Source Module...")
-            let output = try sourceModule.prediction(from: sourceInput)
-            print("✅ Source Module completed successfully")
-            return output
+            return try sourceModule.prediction(from: sourceInput)
         }
         guard let sineMerge = sourceOutput.featureValue(for: "sine_merge")?.multiArrayValue else {
             throw TTSError.predictionFailed("Failed to get source module output")
         }
-        print("🎼 Source module output: \(sineMerge.shape), elements: \(sineMerge.count)")
-        
+
         // Apply transpose(1, 2).squeeze(1) equivalent operations
         let harSource = try transposeAndSqueeze(sineMerge)
-        print("🔄 After transpose and squeeze: \(harSource.shape), elements: \(harSource.count)")
-        
+
         // Step 4: Apply STFT to get harmonics using RosaKit
         let (harSpec, harPhase) = try monitor.measure(PerformanceMonitor.Module.stft) {
-            print("▶️ Calling STFT transform...")
-            let result = try rosaStft.transform(harSource)
-            print("✅ STFT completed, spec: \(result.0.shape), phase: \(result.1.shape)")
-            return result
+            return try rosaStft.transform(harSource)
         }
 
         // Concatenate spec and phase: har = torch.cat([har_spec, har_phase], dim=1)
         let har = try concatenateSpectrograms(harSpec, harPhase)
-        print("🔗 Concatenated harmonics: \(har.shape), elements: \(har.count)")
-        
+
         // Step 5: Generate through main generator
         let generatorOutput = try monitor.measure("Generator Core") {
-            print("🎛️ Generator Core inputs:")
-            print("   x: \(x.shape), elements: \(x.count)")
-            print("   s: \(s.shape), elements: \(s.count)")
-            print("   har: \(har.shape), elements: \(har.count)")
-            
             let generatorInput = try MLDictionaryFeatureProvider(dictionary: [
                 "x": MLFeatureValue(multiArray: x),
                 "s": MLFeatureValue(multiArray: s),
                 "har": MLFeatureValue(multiArray: har)
             ])
-            
-            print("▶️ Calling Generator Core model...")
-            let output = try generator.prediction(from: generatorInput)
-            print("✅ Generator Core completed successfully")
-            return output
+            return try generator.prediction(from: generatorInput)
         }
         guard let spec = generatorOutput.featureValue(for: "spec")?.multiArrayValue,
               let phase = generatorOutput.featureValue(for: "phase")?.multiArrayValue else {
             throw TTSError.predictionFailed("Failed to get generator output")
         }
-        print("📊 Generator output - spec: \(spec.shape), phase: \(phase.shape)")
-        
+
         // Step 6: Apply inverse STFT to get audio
         let audio = try monitor.measure(PerformanceMonitor.Module.inverseSTFT) {
-            print("▶️ Calling inverse STFT...")
-            print("   spec: \(spec.shape), elements: \(spec.count)")
-            print("   phase: \(phase.shape), elements: \(phase.count)")
-            let result = try rosaStft.inverse(spec, phase)
-            print("✅ Inverse STFT completed, audio shape: \(result.shape)")
-            return result
+            return try rosaStft.inverse(spec, phase)
         }
-        
+
         // Convert to 1D array
         let audioLength = audio.shape[2].intValue
         var audioArray = [Float](repeating: 0, count: audioLength)
         for i in 0..<audioLength {
             audioArray[i] = audio[[0, 0, i as NSNumber]].floatValue
         }
-        
+
         return audioArray
     }
-    
+
     // MARK: - Private Methods
-    
+
     private func reshapeF0ForUpsample(_ f0Curve: MLMultiArray) throws -> MLMultiArray {
         // F0 curve shape: [1, sequence_length] -> [1, 1, sequence_length]
         let batchSize = 1
         let channels = 1
         let sequenceLength = f0Curve.shape[1].intValue
-        
+
         let reshaped = try MLMultiArray(shape: [NSNumber(value: batchSize), NSNumber(value: channels), NSNumber(value: sequenceLength)], dataType: .float32)
-        
+
         for i in 0..<sequenceLength {
             reshaped[[0, 0, i as NSNumber]] = f0Curve[[0, i as NSNumber]]
         }
-        
+
         return reshaped
     }
-    
+
     private func transposeF0(_ f0: MLMultiArray) throws -> MLMultiArray {
         // Transpose from [batch, 1, time] to [batch, time, 1]
         let batchSize = f0.shape[0].intValue
         let channels = f0.shape[1].intValue // Should be 1
         let time = f0.shape[2].intValue
-        
+
         let transposed = try MLMultiArray(shape: [NSNumber(value: batchSize), NSNumber(value: time), NSNumber(value: channels)], dataType: .float32)
-        
+
         for b in 0..<batchSize {
             for t in 0..<time {
                 for c in 0..<channels {
@@ -194,18 +155,18 @@ public class Generator {
                 }
             }
         }
-        
+
         return transposed
     }
-    
+
     private func concatenateSpectrograms(_ spec: MLMultiArray, _ phase: MLMultiArray) throws -> MLMultiArray {
         // Concatenate along channel dimension: [batch, freqBins, frames] + [batch, freqBins, frames] -> [batch, freqBins*2, frames]
         let batchSize = spec.shape[0].intValue
         let freqBins = spec.shape[1].intValue
         let frames = spec.shape[2].intValue
-        
+
         let concatenated = try MLMultiArray(shape: [NSNumber(value: batchSize), NSNumber(value: freqBins * 2), NSNumber(value: frames)], dataType: .float32)
-        
+
         // Copy spec to first half of channels
         for b in 0..<batchSize {
             for f in 0..<freqBins {
@@ -214,7 +175,7 @@ public class Generator {
                 }
             }
         }
-        
+
         // Copy phase to second half of channels
         for b in 0..<batchSize {
             for f in 0..<freqBins {
@@ -223,23 +184,23 @@ public class Generator {
                 }
             }
         }
-        
+
         return concatenated
     }
-    
+
     private func transposeAndSqueeze(_ input: MLMultiArray) throws -> MLMultiArray {
         // Apply transpose(1, 2).squeeze(1)
         // Input shape: [1, length, 1] -> transpose(1,2) -> [1, 1, length] -> squeeze(1) -> [length]
         // But we need to keep batch dimension for STFT, so result: [1, length]
-        
+
         let length = input.shape[1].intValue
         let result = try MLMultiArray(shape: [1, NSNumber(value: length)], dataType: .float32)
-        
+
         for i in 0..<length {
             result[[0, i as NSNumber]] = input[[0, i as NSNumber, 0]]
         }
-        
+
         return result
     }
-    
+
 }

@@ -74,7 +74,6 @@ public class Lexicon {
         let silverDict = try JSONSerialization.jsonObject(with: silverData) as? [String: Any] ?? [:]
         self.silvers = Lexicon.growDictionary(silverDict)
         
-        print("📚 Loaded Lexicon: gold=\(golds.count) entries, silver=\(silvers.count) entries")
     }
     
     /// Расширение словаря (как grow_dictionary в Python)
@@ -707,7 +706,6 @@ public class Lexicon {
         }
         
         if result.isEmpty {
-            print("❌ TODO:NUM \(word) \(currency ?? "nil")")
             return (nil, nil)
         }
         

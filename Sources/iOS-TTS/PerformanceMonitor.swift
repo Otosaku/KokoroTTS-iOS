@@ -130,7 +130,7 @@ public final class PerformanceMonitor: @unchecked Sendable {
     
     /// Print the performance report to console
     public func printReport() {
-        print(generateReport())
+        Swift.print(generateReport())
     }
 }
 
