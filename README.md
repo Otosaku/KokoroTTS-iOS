@@ -2,6 +2,20 @@
 
 Swift Package for text-to-speech on iOS using the Kokoro TTS model.
 
+> [!IMPORTANT]
+> ### 🚀 Successor project: LinnetTTS by VoxRT
+> On-device TTS has moved to **[LinnetTTS](https://github.com/VoxRT/LinnetTTS)** — a ground-up
+> rewrite on VoxRT's custom Rust inference runtime. Same idea as `OtosakuTTS`, but a new model
+> (~41M params, 24 kHz) that streams audio from the first 80 ms and runs in real time on a single
+> phone CPU core — and now beyond iOS:
+>
+> - **Code & SDKs →** [**VoxRT/LinnetTTS**](https://github.com/VoxRT/LinnetTTS) —
+>   iOS Swift package, Android AAR, Linux C library, Python wheel.
+> - **Weights & samples →** [**VoxRT/linnet-en-35m**](https://huggingface.co/VoxRT/linnet-en-35m) on Hugging Face,
+>   plus a [demo Space](https://huggingface.co/spaces/VoxRT/linnet-tts).
+>
+> This repo stays up for reference, but new development happens in LinnetTTS. 👉 Start there.
+
 > **Note:** Currently, the model is adapted and tested only for **English (en_us, en_gb)** and **French (fr)** languages. All other languages require preprocessor improvements. Contributors are welcome!
 
 ## Installation
